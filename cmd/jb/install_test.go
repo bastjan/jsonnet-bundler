@@ -140,11 +140,10 @@ func TestWriteChangedJsonnetFile(t *testing.T) {
 			Name:             "NoDiffNotEmpty",
 			JsonnetFileBytes: []byte(`{"dependencies": [{"version": "master"}]}`),
 			NewJsonnetFile: v1.JsonnetFile{
-				Dependencies: map[string]deps.Dependency{
-					"": {
+				Dependencies: addDependency(deps.NewOrdered(),
+					"", deps.Dependency{
 						Version: "master",
-					},
-				},
+					}),
 			},
 			ExpectWrite: false,
 		},
@@ -152,11 +151,10 @@ func TestWriteChangedJsonnetFile(t *testing.T) {
 			Name:             "DiffVersion",
 			JsonnetFileBytes: []byte(`{"dependencies": [{"version": "1.0"}]}`),
 			NewJsonnetFile: v1.JsonnetFile{
-				Dependencies: map[string]deps.Dependency{
-					"": {
+				Dependencies: addDependency(deps.NewOrdered(),
+					"", deps.Dependency{
 						Version: "2.0",
-					},
-				},
+					}),
 			},
 			ExpectWrite: true,
 		},
@@ -164,8 +162,8 @@ func TestWriteChangedJsonnetFile(t *testing.T) {
 			Name:             "Diff",
 			JsonnetFileBytes: []byte(`{}`),
 			NewJsonnetFile: v1.JsonnetFile{
-				Dependencies: map[string]deps.Dependency{
-					"github.com/foobar/foobar": {
+				Dependencies: addDependency(deps.NewOrdered(),
+					"github.com/foobar/foobar", deps.Dependency{
 						Source: deps.Source{
 							GitSource: &deps.Git{
 								Scheme: deps.GitSchemeHTTPS,
@@ -176,7 +174,7 @@ func TestWriteChangedJsonnetFile(t *testing.T) {
 							},
 						},
 						Version: "master",
-					}},
+					}),
 			},
 			ExpectWrite: true,
 		},
@@ -203,4 +201,9 @@ func TestWriteChangedJsonnetFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func addDependency(o *deps.Ordered, name string, dep deps.Dependency) *deps.Ordered {
+	o.Set(name, dep)
+	return o
 }
