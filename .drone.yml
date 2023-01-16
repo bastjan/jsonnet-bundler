@@ -32,6 +32,20 @@ steps:
       exclude:
       - tag
 - commands:
+  - make build
+  - make test
+  - make test-integration
+  environment:
+    CGO_ENABLED: "0"
+    GO111MODULE: "on"
+  image: golang:1.19
+  name: build-1.19
+  pull: always
+  when:
+    event:
+      exclude:
+      - tag
+- commands:
   - make check-license
   - make generate
   - git diff --exit-code
