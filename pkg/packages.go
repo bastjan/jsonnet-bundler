@@ -20,6 +20,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ var (
 func Ensure(direct v1.JsonnetFile, vendorDir string, oldLocks *deps.Ordered) (*deps.Ordered, error) {
 	// ensure all required files are in vendor
 	// This is the actual installation
-	locks, err := ensure(direct.Dependencies, vendorDir, "", oldLocks)
+	locks, err := downloadAndLink(direct, vendorDir, oldLocks)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +67,9 @@ func Ensure(direct v1.JsonnetFile, vendorDir string, oldLocks *deps.Ordered) (*d
 		if path == vendorDir {
 			return nil
 		}
+		if strings.HasPrefix(path, filepath.Join(vendorDir, ".cache")) {
+			return nil
+		}
 		if !i.IsDir() {
 			return nil
 		}
@@ -73,6 +77,9 @@ func Ensure(direct v1.JsonnetFile, vendorDir string, oldLocks *deps.Ordered) (*d
 		names = append(names, path)
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// remove them
 	for _, dir := range names {
@@ -119,19 +126,19 @@ func CleanLegacyName(list *deps.Ordered) {
 
 func cleanLegacySymlinks(vendorDir string, locks *deps.Ordered) error {
 	// local packages need to be ignored
-	locals := map[string]bool{}
+	known := map[string]struct{}{}
 	for _, k := range locks.Keys() {
 		d, _ := locks.Get(k)
-		if d.Source.LocalSource == nil {
-			continue
-		}
-
-		locals[filepath.Join(vendorDir, d.Name())] = true
+		// Name contains the absolute path to the package, we only want to remove the relative ones
+		known[filepath.Join(vendorDir, d.Name())] = struct{}{}
 	}
 
-	// remove all symlinks first
+	// remove all unknown symlinks first
 	return filepath.Walk(vendorDir, func(path string, i os.FileInfo, err error) error {
-		if locals[path] {
+		if strings.HasPrefix(path, filepath.Join(vendorDir, ".cache")) {
+			return nil
+		}
+		if _, found := known[path]; found {
 			return nil
 		}
 
@@ -214,76 +221,6 @@ func known(deps *deps.Ordered, p string) bool {
 	return false
 }
 
-func ensure(direct *deps.Ordered, vendorDir, pathToParentModule string, locks *deps.Ordered) (*deps.Ordered, error) {
-	deps := deps.NewOrdered()
-
-	for _, k := range direct.Keys() {
-		d, _ := direct.Get(k)
-		l, present := locks.Get(d.Name())
-
-		// already locked and the integrity is intact
-		if present {
-			d.Version = l.Version
-
-			if check(l, vendorDir) {
-				deps.Set(d.Name(), l)
-				continue
-			}
-		}
-		expectedSum := l.Sum
-
-		// either not present or not intact: download again
-		dir := filepath.Join(vendorDir, d.Name())
-		os.RemoveAll(dir)
-
-		locked, err := download(d, vendorDir, pathToParentModule)
-		if err != nil {
-			return nil, errors.Wrap(err, "downloading")
-		}
-		if expectedSum != "" && locked.Sum != expectedSum {
-			return nil, fmt.Errorf("checksum mismatch for %s. Expected %s but got %s", d.Name(), expectedSum, locked.Sum)
-		}
-		deps.Set(d.Name(), *locked)
-		// we settled on a new version, add it to the locks for recursion
-		locks.Set(d.Name(), *locked)
-	}
-
-	for _, k := range deps.Keys() {
-		d, _ := deps.Get(k)
-		if d.Single {
-			// skip dependencies that explicitely don't want nested ones installed
-			continue
-		}
-
-		f, err := jsonnetfile.Load(filepath.Join(vendorDir, d.Name(), jsonnetfile.File))
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-
-		absolutePath, err := filepath.EvalSymlinks(filepath.Join(vendorDir, d.Name()))
-		if err != nil {
-			return nil, err
-		}
-
-		nested, err := ensure(f.Dependencies, vendorDir, absolutePath, locks)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, k := range nested.Keys() {
-			d, _ := nested.Get(k)
-			if _, ok := deps.Get(d.Name()); !ok {
-				deps.Set(d.Name(), d)
-			}
-		}
-	}
-
-	return deps, nil
-}
-
 // download retrieves a package from a remote upstream. The checksum of the
 // files is generated afterwards.
 func download(d deps.Dependency, vendorDir, pathToParentModule string) (*deps.Dependency, error) {
@@ -320,7 +257,10 @@ func download(d deps.Dependency, vendorDir, pathToParentModule string) (*deps.De
 
 	var sum string
 	if d.Source.LocalSource == nil {
-		sum = hashDir(filepath.Join(vendorDir, d.Name()))
+		sum, err = hashDir(filepath.Join(vendorDir, d.Name()))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	d.Version = version
@@ -348,22 +288,34 @@ func check(d deps.Dependency, vendorDir string) bool {
 	}
 
 	dir := filepath.Join(vendorDir, d.Name())
-	sum := hashDir(dir)
-	return d.Sum == sum
+	sum, err := hashDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			color.Red("ERROR %s@%s %s", d.Name(), d.Version, err)
+		}
+		return false
+	}
+	if d.Sum == sum {
+		return true
+	}
+	color.Yellow("CHECKSUM FAIL %s@%s", d.Name(), d.Version)
+	return false
 }
 
 // hashDir computes the checksum of a directory by concatenating all files and
 // hashing this data using sha256. This can be memory heavy with lots of data,
 // but jsonnet files should be fairly small
-func hashDir(dir string) string {
+func hashDir(dir string) (string, error) {
 	hasher := sha256.New()
 
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if info.IsDir() {
+		// if having the same dependencies with subdir and without subdir
+		// there might be symlinks injected
+		if info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
 			return nil
 		}
 
@@ -380,5 +332,5 @@ func hashDir(dir string) string {
 		return nil
 	})
 
-	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	return base64.StdEncoding.EncodeToString(hasher.Sum(nil)), err
 }
