@@ -179,6 +179,11 @@ func remoteResolveRef(ctx context.Context, remote string, ref string) (string, e
 	return commitSha, nil
 }
 
+var (
+	githubRegex      = regexp.MustCompile(`^(https|ssh)://github\.com/.+$`)
+	commitShaPattern = regexp.MustCompile("^([0-9a-f]{40,})$")
+)
+
 func (p *GitPackage) Install(ctx context.Context, name, dir, version string) (string, error) {
 	destPath := path.Join(dir, name)
 
@@ -192,15 +197,17 @@ func (p *GitPackage) Install(ctx context.Context, name, dir, version string) (st
 
 	// Optimization for GitHub sources: download a tarball archive of the requested
 	// version instead of cloning the entire
-	isGitHubRemote, err := regexp.MatchString(`^(https|ssh)://github\.com/.+$`, p.Source.Remote())
+	isGitHubRemote := githubRegex.MatchString(p.Source.Remote())
 	if isGitHubRemote {
 		// Let git ls-remote decide if "version" is a ref or a commit SHA in the unlikely
 		// but possible event that a ref is comprised of 40 or more hex characters
 		commitSha, err := remoteResolveRef(ctx, p.Source.Remote(), version)
+		if err != nil {
+			color.White("failed to resolve ref %s@%s: %s", name, version, err)
+		}
 
 		// If the ref resolution failed and "version" looks like a SHA,
 		// assume it is one and proceed.
-		commitShaPattern := regexp.MustCompile("^([0-9a-f]{40,})$")
 		if commitSha == "" && commitShaPattern.MatchString(version) {
 			commitSha = version
 		}
