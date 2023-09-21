@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 
@@ -99,12 +98,11 @@ func (pd *parallelDownloader) ensure(direct *deps.Ordered, vendorDir, pathToPare
 			}
 
 			if needsDownload {
-				// TODO compat with download() code. can be simplified
 				if err := os.RemoveAll(cp); err != nil {
 					pd.addErr(err)
 					return
 				}
-				if err := os.MkdirAll(path.Join(cp, ".tmp"), os.ModePerm); err != nil {
+				if err := os.MkdirAll(cp, os.ModePerm); err != nil {
 					pd.addErr(err)
 					return
 				}

@@ -51,7 +51,7 @@ func installCommand(dir, jsonnetHome string, uris []string, single bool, legacyN
 	kingpin.FatalIfError(err, "")
 
 	kingpin.FatalIfError(
-		os.MkdirAll(filepath.Join(dir, jsonnetHome, ".tmp"), os.ModePerm),
+		os.MkdirAll(filepath.Join(dir, jsonnetHome, ".cache"), os.ModePerm),
 		"creating vendor folder")
 
 	if len(uris) > 1 && legacyName != "" {

@@ -91,9 +91,7 @@ func Ensure(direct v1.JsonnetFile, vendorDir string, oldLocks *deps.Ordered) (*d
 			if err := os.RemoveAll(dir); err != nil {
 				return nil, err
 			}
-			if !strings.HasPrefix(name, ".tmp") {
-				color.Magenta("CLEAN %s", dir)
-			}
+			color.Magenta("CLEAN %s", dir)
 		}
 	}
 
