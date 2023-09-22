@@ -55,3 +55,6 @@ docker_manifests:
 
 release:
   prerelease: auto
+
+build:
+  main: ./cmd/jb/main.go
