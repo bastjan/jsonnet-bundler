@@ -1,1 +1,5 @@
 _output/
+
+# Goreleaser
+/dist/
+/.github/release-notes.md

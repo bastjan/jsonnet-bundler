@@ -1,6 +1,8 @@
 module github.com/jsonnet-bundler/jsonnet-bundler
 
-go 1.18
+go 1.21
+
+toolchain go1.21.1
 
 require (
 	github.com/elliotchance/orderedmap/v2 v2.2.0

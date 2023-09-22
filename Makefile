@@ -56,6 +56,3 @@ embedmd:
 # Other
 clean:
 	rm -rf $(OUT_DIR) $(BIN)
-
-drone:
-	drone jsonnet --format
