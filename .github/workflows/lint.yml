@@ -1,0 +1,17 @@
+name: Lint
+
+on:
+  pull_request: {}
+
+jobs:
+  go-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Run linters
+        run: make lint

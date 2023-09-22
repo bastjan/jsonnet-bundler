@@ -1,5 +1,15 @@
-FROM busybox:1.35.0
+FROM docker.io/library/alpine:3.17 as runtime
 
-COPY _output/linux/amd64/jb /
+RUN \
+  apk add --update --no-cache \
+    bash \
+    curl \
+    git \
+    ca-certificates \
+    tzdata
 
-ENTRYPOINT ["/jb"]
+# TODO: Adjust binary file name
+ENTRYPOINT ["jb"]
+COPY jb /usr/bin/
+
+USER 65536:0
