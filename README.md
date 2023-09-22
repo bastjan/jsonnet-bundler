@@ -4,6 +4,14 @@
 
 The jsonnet-bundler is a package manager for [Jsonnet](http://jsonnet.org/).
 
+## Project Syn Fork
+
+This fork contains a few changes to the original project:
+- Dependencies are deterministically fetched, even with diamond shaped dependencies
+- Dependencies are fetched in parallel
+- (Our own CI scaffolding)
+
+We're committed to upstream these changes after some more testing inside our own projects.
 
 ## Install
 
@@ -96,7 +104,7 @@ Flags:
   -h, --help     Show context-sensitive help (also try --help-long and
                  --help-man).
       --version  Show application version.
-      --jsonnetpkg-home="vendor"  
+      --jsonnetpkg-home="vendor"
                  The directory used to cache packages in.
   -q, --quiet    Suppress any output from git command.
 
