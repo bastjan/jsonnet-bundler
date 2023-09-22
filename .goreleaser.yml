@@ -11,6 +11,7 @@ builds:
   goarm:
   - 8
   main: ./cmd/jb
+  binary: jb
 
 archives:
 - format: binary
