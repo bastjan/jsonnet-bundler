@@ -10,7 +10,7 @@ builds:
   - linux
   goarm:
   - 8
-  main: ./cmd/jb/main.go
+  main: ./cmd/jb
 
 archives:
 - format: binary
