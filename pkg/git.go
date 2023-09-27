@@ -225,10 +225,10 @@ func (p *GitPackage) Install(ctx context.Context, name, dir, version string) (st
 				// Move the extracted directory to its final destination
 				if err == nil {
 					if err := os.MkdirAll(filepath.Dir(destPath), os.ModePerm); err != nil {
-						panic(err)
+						return "", fmt.Errorf("failed to create parent path: %s", err)
 					}
 					if err := os.Rename(path.Join(tmpDir, p.Source.Subdir), destPath); err != nil {
-						panic(err)
+						return "", fmt.Errorf("failed to move package: %s; was the sub dir moved?", err)
 					}
 				}
 			}

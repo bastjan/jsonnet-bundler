@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,11 +13,7 @@ import (
 )
 
 func downloadAndLink(direct v1.JsonnetFile, vendorDir string, oldLocks *deps.Ordered) (*deps.Ordered, error) {
-	dl, err := new(parallelDownloader).Ensure(direct.Dependencies, vendorDir, "", oldLocks)
-	if err != nil {
-		return nil, err
-	}
-
+	dl := new(parallelDownloader).Ensure(direct.Dependencies, vendorDir, "", oldLocks)
 	return oldLocks, linkDownloaded(direct.Dependencies, vendorDir, dl, oldLocks, make(map[string]struct{}))
 }
 
@@ -30,6 +25,8 @@ type packageRef struct {
 type downloadedPackage struct {
 	lock deps.Dependency
 	jsf  *v1.JsonnetFile
+
+	downloadErr error
 }
 
 // parallelDownloader is a downloader that downloads all dependencies in parallel
@@ -44,10 +41,6 @@ type parallelDownloader struct {
 	// deps stores all dependencies that we have already downloaded
 	locksM sync.Mutex
 	locks  map[packageRef]downloadedPackage
-
-	// errs stores all errors that occured during the download
-	errsM sync.Mutex
-	errs  []error
 }
 
 // Ensure recursively downloads all dependencies of the given direct dependencies.
@@ -56,11 +49,13 @@ type parallelDownloader struct {
 // It returns a map of all downloaded packages and their locks.
 // If an error occurs, the map might be incomplete.
 // If the same package is requested multiple times, it is only downloaded once.
+// The download of the package might fail. This function does not return an error but stores them in the returned map.
+// The downloadedPackage should be checked for downloadErr before use.
 // The parallelDownloader must be discarded after calling Ensure.
-func (pd *parallelDownloader) Ensure(direct *deps.Ordered, vendorDir, pathToParentModule string, oldLocks *deps.Ordered) (map[packageRef]downloadedPackage, error) {
+func (pd *parallelDownloader) Ensure(direct *deps.Ordered, vendorDir, pathToParentModule string, oldLocks *deps.Ordered) map[packageRef]downloadedPackage {
 	pd.ensure(direct, vendorDir, "", oldLocks)
 	pd.working.Wait()
-	return pd.locks, errors.Join(pd.errs...)
+	return pd.locks
 }
 
 // ensure recursively downloads all dependencies of the given direct dependencies.
@@ -99,20 +94,20 @@ func (pd *parallelDownloader) ensure(direct *deps.Ordered, vendorDir, pathToPare
 
 			if needsDownload {
 				if err := os.RemoveAll(cp); err != nil {
-					pd.addErr(err)
+					pd.addErr(ref, err)
 					return
 				}
 				if err := os.MkdirAll(cp, os.ModePerm); err != nil {
-					pd.addErr(err)
+					pd.addErr(ref, err)
 					return
 				}
 				l, err := download(d, cp, pathToParentModule)
 				if err != nil {
-					pd.addErr(err)
+					pd.addErr(ref, err)
 					return
 				}
 				if expectedSum != "" && expectedSum != l.Sum {
-					pd.addErr(fmt.Errorf("integrity check failed for %s@%s", d.Name(), d.Version))
+					pd.addErr(ref, fmt.Errorf("integrity check failed for %s@%s", d.Name(), d.Version))
 					return
 				}
 				lock = *l
@@ -131,14 +126,14 @@ func (pd *parallelDownloader) ensure(direct *deps.Ordered, vendorDir, pathToPare
 					pd.addLock(ref, downloadedPackage{lock: lock})
 					return
 				}
-				pd.addErr(err)
+				pd.addErr(ref, err)
 				return
 			}
 			pd.addLock(ref, downloadedPackage{lock: lock, jsf: &f})
 
 			absolutePath, err := filepath.EvalSymlinks(filepath.Join(cp, d.Name()))
 			if err != nil {
-				pd.addErr(err)
+				pd.addErr(ref, err)
 				return
 			}
 
@@ -156,10 +151,13 @@ func (pd *parallelDownloader) addLock(p packageRef, d downloadedPackage) {
 	pd.locks[p] = d
 }
 
-func (pd *parallelDownloader) addErr(err error) {
-	pd.errsM.Lock()
-	defer pd.errsM.Unlock()
-	pd.errs = append(pd.errs, err)
+func (pd *parallelDownloader) addErr(p packageRef, err error) {
+	pd.locksM.Lock()
+	defer pd.locksM.Unlock()
+	if pd.locks == nil {
+		pd.locks = make(map[packageRef]downloadedPackage)
+	}
+	pd.locks[p] = downloadedPackage{downloadErr: err}
 }
 
 func cachePath(vendorDir string, d deps.Dependency) string {
@@ -183,6 +181,9 @@ func linkDownloaded(direct *deps.Ordered, vendorDir string, downloaded map[packa
 		dl, ok := downloaded[packageRef{name: d.Name(), version: d.Version}]
 		if !ok {
 			return fmt.Errorf("could not find downloaded package %s@%s", d.Name(), d.Version)
+		}
+		if dl.downloadErr != nil {
+			return fmt.Errorf("downloaded package %s@%s has error but is required: %w", d.Name(), d.Version, dl.downloadErr)
 		}
 		oldLocks.Set(d.Name(), dl.lock)
 
