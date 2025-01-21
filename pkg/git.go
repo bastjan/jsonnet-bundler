@@ -198,6 +198,11 @@ func (p *GitPackage) Install(ctx context.Context, name, dir, version string) (st
 		// Let git ls-remote decide if "version" is a ref or a commit SHA in the unlikely
 		// but possible event that a ref is comprised of 40 or more hex characters
 		commitSha, err := remoteResolveRef(ctx, p.Source.Remote(), version)
+		if commitSha == "" && version == "master" {
+			color.Yellow("WARN: ref 'master' resolved to empty string for %s, retrying with 'main'", p.Source.Remote())
+			version = "main"
+			commitSha, err = remoteResolveRef(ctx, p.Source.Remote(), version)
+		}
 		if err != nil {
 			color.White("failed to resolve ref %s@%s: %s", name, version, err)
 		}
