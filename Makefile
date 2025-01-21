@@ -11,7 +11,7 @@ PKGS=$(shell go list ./... | grep -v /vendor/)
 all: check-license build generate test
 
 # Binaries
-LDFLAGS := '-s -w -extldflags "-static" -X main.Version=${VERSION}'
+LDFLAGS := '-s -w -extldflags "-static" -X main.version=${VERSION}'
 cross: clean
 	CGO_ENABLED=0 gox \
 	  -output="$(OUT_DIR)/jb-{{.OS}}-{{.Arch}}" \

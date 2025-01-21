@@ -33,7 +33,7 @@ const (
 	rewriteActionName = "rewrite"
 )
 
-var Version = "dev"
+var version = "dev"
 
 func main() {
 	os.Exit(Main())
@@ -46,7 +46,7 @@ func Main() int {
 
 	color.Output = color.Error
 
-	a := kingpin.New(filepath.Base(os.Args[0]), "A jsonnet package manager").Version(Version)
+	a := kingpin.New(filepath.Base(os.Args[0]), "A jsonnet package manager").Version(version)
 	a.HelpFlag.Short('h')
 
 	a.Flag("jsonnetpkg-home", "The directory used to cache packages in.").
